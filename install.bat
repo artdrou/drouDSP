@@ -1,3 +1,9 @@
-py -m venv --clear venv
-pip install -r modules.txt
-echo install is done
+ECHO Clean previous venv ...
+powershell "if (Test-Path .\venv\) {Remove-Item .\venv\ -Recurse}"
+
+ECHO Setting up new venv...
+py -3.10 -m venv --clear venv
+
+ECHO Installing dependancies...
+venv\Scripts\python.exe -m pip install --upgrade pip
+venv\Scripts\pip.exe install -r modules.txt
