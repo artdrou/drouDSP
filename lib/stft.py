@@ -1,44 +1,14 @@
 from pathlib import Path
 import soundfile
 import sounddevice
+import os, sys
 import numpy as np
 import numpy.fft as fft
 import matplotlib.pyplot as plt
 import scipy.signal
 
-
-def keepFftPositiveF(fastft: np.ndarray) -> np.ndarray:
-    """keeps only positive frequencies indexes of a fft
-
-    Args:
-        fastft (np.ndarray): input fft with positive and negative frequencies
-
-    Returns:
-        np.ndarray: output fft with only positive frequency indexes.
-    """
-    if len(fastft)%2 == 0:
-        posfft = fastft[0: int(np.floor(len(fastft)/2)+1)]
-    else:
-        posfft = fastft[0: int(np.floor(len(fastft)/2)+2)]
-    return posfft
-
-
-def addFftNegativeF(fastft: np.ndarray) -> np.ndarray:
-    """Adds the negative frequency indexes to a only positive frequency indexes fft
-
-    Args:
-        fastft (np.ndarray): fft with only positive frequency indexes.
-
-    Returns:
-        np.ndarray: output complete fft.
-    """
-    if len(fastft)%2 == 0:
-        symFft = np.flip(np.conj(fastft))
-        fastft = np.concatenate((fastft, symFft[2:-1]))
-    else:
-        symFft = np.flip(np.conj(fastft))
-        fastft = np.concatenate((fastft, symFft[1:-1]))
-    return fastft
+import chunks
+import fourierTransforms as ft
 
 
 def computeFft(x: np.ndarray, n: int=None) -> np.ndarray:
@@ -54,7 +24,7 @@ def computeFft(x: np.ndarray, n: int=None) -> np.ndarray:
     if n is None:
         n = len(x)
     xfft = fft.fft(x, n)
-    return keepFftPositiveF(xfft)
+    return ft.keepFftPositiveF(xfft)
 
 def computeIfft(xfft: np.ndarray) -> np.ndarray:
     """Computes temporal signal from positive frequency indexes fft.
@@ -65,50 +35,8 @@ def computeIfft(xfft: np.ndarray) -> np.ndarray:
     Returns:
         np.ndarray: temporal signal.
     """
-    x = fft.ifft(addFftNegativeF(xfft))
+    x = fft.ifft(ft.addFftNegativeF(xfft))
     return x
-
-
-def frameSignal(x: np.ndarray, frameLength: int, overlapLength: int) -> np.ndarray:
-    """Splits signal into multiple chunks with defined overlay size.
-
-    Args:
-        x (np.ndarray): Signal.
-        frameLength (int): length of each chunk (in indexes).
-        overlapLength (int): length of overlapp between each chunk (in indexes).
-
-    Returns:
-        np.ndarray: array of chunks.
-    """
-    framedSignal = []
-    indexStatus = 0
-    while indexStatus <= len(x)-frameLength:
-        framedSignal.append(x[indexStatus:indexStatus+frameLength])
-        indexStatus += overlapLength
-    framedSignal = np.array(framedSignal)
-    framedSignal = np.transpose(framedSignal)
-    return framedSignal
-
-
-def overlapAndAdd(framedSignal: np.ndarray, overlapLength: int, frameLength: int) -> np.ndarray:
-    """Contruct temporal signal from array of chunks.
-
-    Args:
-        framedSignal (np.ndarray): signal splitted into multiple chunks.
-        overlapLength (int, optional): length of overlapp between each chunk (in indexes).
-        frameLength (int, optional): length of each chunk (in indexes).
-
-    Returns:
-        np.ndarray: temporal signal.
-    """
-    signal = []
-    n = 0
-    while n < np.shape(framedSignal)[1]:
-        overlapSum = framedSignal[:int(frameLength/2), n] + framedSignal[int(frameLength/2):, n-1]
-        signal.append(overlapSum)
-        n += 1
-    signal = np.concatenate(signal)
-    return signal
 
 
 def computeStft(x: np.ndarray, overlapLength: int, ndft: int) -> np.ndarray:
@@ -122,7 +50,7 @@ def computeStft(x: np.ndarray, overlapLength: int, ndft: int) -> np.ndarray:
     Returns:
         np.ndarray: Short term fourier transform.
     """
-    framedSignal = frameSignal(x, ndft, overlapLength)
+    framedSignal = chunks.frameSignal(x, ndft, overlapLength)
     window = np.sin(np.linspace(0, np.pi, ndft))
     stft = np.zeros((int(ndft/2+1),np.shape(framedSignal)[1]), dtype=complex)
     for n in range(np.shape(stft)[1]):
@@ -145,7 +73,7 @@ def computeIstft(stft: np.ndarray, overlapLength: int, ndft: int) -> np.ndarray:
     window = np.sin(np.linspace(0, np.pi, ndft))
     for n in range(np.shape(stft)[1]):
         framedSignal[:, n] = computeIfft(stft[:, n])*window
-    signal = overlapAndAdd(framedSignal, overlapLength, ndft)
+    signal = chunks.overlapAndAdd(framedSignal, overlapLength, ndft)
     return signal
 
 
