@@ -26,6 +26,12 @@ def computeFft(x: np.ndarray, n: int=None) -> np.ndarray:
     xfft = fft.fft(x, n)
     return ft.keepFftPositiveF(xfft)
 
+
+def computeFftFreq(x, fs):
+    freq = fft.fftfreq(len(x), 1/fs)
+    freq = ft.keepFftPositiveF(freq)
+    return freq
+
 def computeIfft(xfft: np.ndarray) -> np.ndarray:
     """Computes temporal signal from positive frequency indexes fft.
 
