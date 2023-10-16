@@ -7,3 +7,4 @@ py -3.10 -m venv --clear venv
 ECHO Installing dependancies...
 venv\Scripts\python.exe -m pip install --upgrade pip
 venv\Scripts\pip.exe install -r modules.txt
+pause

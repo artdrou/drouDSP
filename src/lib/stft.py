@@ -1,12 +1,9 @@
 from pathlib import Path
 import soundfile
-import sounddevice
-import os, sys
 import numpy as np
 import numpy.fft as fft
 import matplotlib.pyplot as plt
 import scipy.signal
-
 import chunks
 import fourierTransforms as ft
 

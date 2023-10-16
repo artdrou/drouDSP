@@ -1,129 +1,138 @@
 import numpy
-import scipy
-import pyaudio
 import sounddevice
-from scipy.io.wavfile import read
 import matplotlib.pyplot as plt
 import stft
+import time
+import signalGeneration
 
 
-FADE_LINEAR = 'linear'
-FADE_HANNING = 'hanning'
-
-
-def fadeSignal(
-    signal: numpy.ndarray, fs: int, fadeInLength: float = 0.25, fadeOutlength: float = 0.25, fadeType: str = FADE_LINEAR
-):
-    """Adds fade in & fade out to a signal.
+def measureChannels(signal: numpy.ndarray, fs: int, mapping: list, averages: int=1, window: numpy.ndarray=None) -> tuple:
+    """Measure fft of input channels
 
     Args:
-        signal (numpy.ndarray): Audio signal.
-        fs (int): Sampling frequency, rate (in Hz).
-        fadeInLength (float, optional): Length (in s) of the fade in. Defaults to 0.25.
-        fadeOutlength (float, optional): Length (in s) of the fade out. Defaults to 0.25.
-        fadeType (str, optional): Type of the fade,
-            can be linear or following hanning enveloppe. Defaults to 'linear'.
+        signal (numpy.ndarray): Input signal.
+        fs (int): Sample frequency.
+        mapping (list): Input mapping list.
+        averages (int, optional): Number of measurement averages. Defaults to 1.
+        window (numpy.ndarray, optional): Measurement Window. Defaults to None.
 
     Returns:
-        numpy.ndarray: Audio signal with fade in and fade out.
+        tuple: Tuple of frequecy list and fft complex amplitudes.
     """
+    for nn in range(averages):
+        recordedSignal = sounddevice.playrec(
+                signal, samplerate=fs,
+                blocking=False,
+                input_mapping=mapping
+                )
+        time.sleep(1.25*(len(signal)/fs))
+        freq = stft.computeFftFreq(recordedSignal[:, 0], fs)
+        signalFft = numpy.zeros((int(recordedSignal.shape[0]/2), recordedSignal.shape[1]), dtype='complex')
+        for channel in range(recordedSignal.shape[1]):
+            v = recordedSignal[:, channel]/averages
+            if window is not None:
+                _signalFft = stft.computeFft(numpy.multiply(v, window))
+            else:
+                _signalFft = stft.computeFft(v)
+            signalFft[:, channel] = numpy.add(signalFft[:, channel], _signalFft)
+    return freq, signalFft
 
-    fs = int(fs)
-    NfadeInLength = fadeInLength * fs
-    NfadeOutLength = fadeOutlength * fs
-    if fadeType == FADE_LINEAR:
-        fadeIn = numpy.linspace(start=0, stop=1, num=int(NfadeInLength))
-        fadeOut = numpy.linspace(start=1, stop=0, num=int(NfadeOutLength))
-    elif fadeType == FADE_HANNING:
-        fadeIn = numpy.hanning(2 * NfadeInLength)
-        fadeIn = fadeIn[0 : int(len(fadeIn) / 2)]
-        fadeOut = numpy.hanning(int(2 * NfadeOutLength))
-        fadeOut = fadeOut[int(len(fadeOut) / 2) :]
 
-    window = numpy.ones(len(signal))
-    window[0 : len(fadeIn)] = fadeIn
-    window[len(window) - len(fadeOut) :] = fadeOut
-    fadedSignal = signal * window
-    return fadedSignal
-
-
-def generateSweptSineArray(
-    amp: float = 0.75,
-    f0: float = 20,
-    f1: float = 20000,
-    temporal_array: list = None,
-    duration: float = 10,
-    fs: int = 48000,
-    fade: bool = True,
-    novak: bool = False,
-):
-    """Generates a Sweptsine, from f0 to f1, with a possibility to satisfy novaks conditions
-        (based on https://www.ant-novak.com/publications/papers/2010_ieee_novak.pdf).
+def computeComplexImpedence(fft1: numpy.ndarray, fft2:numpy.ndarray, r: float) -> numpy.ndarray:
+    """Computes complex impedance of measurement circuit.
 
     Args:
-        amp (float): amplitudes of swept sine.
-        f0 (float): start frequency (in Hz).
-        f1 (float): end frequency (in Hz).
-        t (list, optional): time vector.
-        duration (float): Duration (in seconds) of the swept sine,
-                        duration may slighty change if novak conditions are respected
-        fs (int): sampling frequency, rate (in Hz)
-        fade (bool): if True, creates a fade in and out on the swept sine.
-        novak (bool): imposes novaks condition to Dt between 2 instantaneous frequencies,
-                        usefull to easily deconvolute input from output recording,
-                        and separate fondamental signal and harmonic signals.
+        fft1 (numpy.ndarray): fft of voltage measurement of speaker and resistor.
+        fft2 (numpy.ndarray): fft of voltage measurement of resistor only.
+        r (float): Resistor impedence value (in ohms)
+
     Returns:
-        t (list): time vector corresponding to x data
-        x (list): list of amplitudes of the swept sine
-        instFreq (list): list of instantaneous frequencies corresponding to time t
+        numpy.ndarray: Complex impedence of speaker.
     """
-    fs = int(fs)
+    return r*(numpy.divide(fft1, fft2) - 1)
 
-    if temporal_array is None:
-        temporal_array = numpy.linspace(0, duration, int(duration * fs))
 
-    if novak is True:
-        temporal_array = None
-        L = numpy.floor((f0 * duration) / numpy.log(f1 / f0)) / f0
-        newDuration = L * numpy.log(f1 / f0)
-        temporal_array = numpy.linspace(0, duration, int(newDuration * fs))
-    else:
-        L = duration / numpy.log(f1 / f0)
-    instFreq = f0 * numpy.exp(temporal_array / L)
+def computeTransferFunction(fft1: numpy.ndarray, fft2:numpy.ndarray) -> numpy.ndarray:
+    """Computes Transfer function response of 2 signals fft.
 
-    signal = amp * numpy.sin(2 * numpy.pi * f0 * L * (numpy.exp(temporal_array / L) - 1))
-    if fade is True:
-        signal = fadeSignal(signal, fs, fadeInLength=0.25, fadeOutlength=0.05)
+    Args:
+        fft1 (numpy.ndarray): Fft of signal 1.
+        fft2 (numpy.ndarray): Fft of signal 2.
 
-    return temporal_array, signal, instFreq
+    Returns:
+        numpy.ndarray: Tranfer function response.
+    """
+    return numpy.divide(fft1, fft2)
+
+
+def plotComplexImpedance(zImpList, frequencyList, bandwidth):
+    if isinstance(zImpList, list) is not True:
+        zImpList = [zImpList]
+    plt.figure()
+    for idx, zImp in enumerate(zImpList):
+        plt.subplot(211)
+        plt.semilogx(frequencyList, abs(zImp), label=f"Spk {idx+1}")
+        plt.grid()
+        plt.xlim(bandwidth)
+        plt.ylim(0, 30)
+        plt.subplot(212)
+        plt.semilogx(frequencyList, numpy.angle(zImp))
+        plt.xlim(bandwidth)
+        plt.grid()
+    plt.legend()
+    plt.show()
+
+
+def plotTransferFunction(frequencyList, tfList):
+    if isinstance(tfList, list) is not True:
+        tfList = [tfList]
+    plt.figure()
+    for idx, tf in enumerate(tfList):
+        plt.subplot(211)
+        plt.semilogx(frequencyList, 20*numpy.log10(abs(tf)), label=f"Spk {idx+1}")
+        amp = max(20*numpy.log10(abs(tf)))
+        plt.plot([20, 20000], [amp, amp], 'r', label=round(amp, 2))
+        plt.legend()
+        plt.grid()
+        plt.xlim(20, 20000)
+        plt.subplot(212)
+        plt.semilogx(frequencyList, numpy.angle(tf))
+        plt.xlim(20, 20000)
+        plt.grid()
+    plt.show()
+
+
+def measureMultipleSpeakersImpedances(signal, fs, averages, nSpeakers, rValue, bandwidth):
+    speaker = 1
+    stop = False
+    zImpList = []
+    while stop != True and speaker <= nSpeakers:
+        if nSpeakers > 1:
+            yesNo = input(f"measure speaker {speaker}: (y/n)")
+        else:
+            yesNo = 'y'
+        if yesNo == 'y':
+            freq, signalFft = measureChannels(signal, fs, [1, 2], averages)
+            zImp = computeComplexImpedence(signalFft[:, 0], signalFft[:, 1], rValue)
+            zImpList.append(zImp)
+            speaker += 1
+        else:
+            stop = True
+    plotComplexImpedance(zImpList=zImpList, frequencyList=freq, bandwidth=bandwidth)
+
+
+def measureTransfertFunction(signal, fs, averages):
+    freq, signalFft = measureChannels(signal, fs, [1, 2], averages)
+    tf = computeTransferFunction(signalFft[:, 0], signalFft[:, 1])
+    plotTransferFunction(frequencyList=freq, tfList=tf)
 
 
 if __name__ == "__main__":
     fs = 48000
-    r1 = 10
-    t, x, ft = generateSweptSineArray(amp=0.95, f0=20, f1=20000, duration=3, fs=fs, fade=True)
-    xfft = stft.computeFft(x)
-    measurement = True
-    speaker = 1
-    plt.figure()
-    # Open stream with correct settings
-    print('playing')
-    recordedSignal = sounddevice.playrec(
-            x, samplerate=fs,
-            blocking=True,
-            input_mapping=[1, 2]
-            )
-    vSpk = recordedSignal[:, 0]
-    vRes = recordedSignal[:, 1]
-    ySpkFft = stft.computeFft(vSpk)
-    freq = stft.computeFftFreq(vSpk, fs)
-    yResFft = stft.computeFft(vRes)
-    zImp = r1*(ySpkFft/yResFft)
-    plt.subplot(211)
-    plt.semilogx(freq, abs(zImp))
-    plt.xlim(20, 20000)
-    plt.ylim(0, 12)
-    plt.subplot(212)
-    plt.semilogx(freq, numpy.angle(zImp))
-    plt.xlim(20, 20000)
-    plt.show()
+    bandwidth = [5, 5000]
+    r1 = 1
+    averages = 5
+    duration = 1
+    t, x, _ = signalGeneration.generateSweptsine(amp=0.95, f0=bandwidth[0], f1=bandwidth[1], duration=duration, fs=fs, fade=True)
+    measureMultipleSpeakersImpedances(x, fs, averages, 1, r1, bandwidth)
+    
