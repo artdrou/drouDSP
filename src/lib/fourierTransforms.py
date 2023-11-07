@@ -17,9 +17,9 @@ def keepFftPositiveF(fastft: np.ndarray) -> np.ndarray:
         np.ndarray: output fft with only positive frequency indexes.
     """
     if len(fastft)%2 == 0:
-        posfft = fastft[0: int(np.floor(len(fastft)/2)+1)]
+        posfft = fastft[0: int(np.floor(len(fastft)/2))]
     else:
-        posfft = fastft[0: int(np.floor(len(fastft)/2)+2)]
+        posfft = fastft[0: int(np.floor(len(fastft)/2)+1)]
     return posfft
 
 

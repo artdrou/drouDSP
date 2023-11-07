@@ -1,12 +1,9 @@
 from pathlib import Path
 import soundfile
-import sounddevice
-import os, sys
 import numpy as np
 import numpy.fft as fft
 import matplotlib.pyplot as plt
 import scipy.signal
-
 import chunks
 import fourierTransforms as ft
 
@@ -25,6 +22,12 @@ def computeFft(x: np.ndarray, n: int=None) -> np.ndarray:
         n = len(x)
     xfft = fft.fft(x, n)
     return ft.keepFftPositiveF(xfft)
+
+
+def computeFftFreq(x, fs):
+    freq = fft.fftfreq(len(x), 1/fs)
+    freq = ft.keepFftPositiveF(freq)
+    return freq
 
 def computeIfft(xfft: np.ndarray) -> np.ndarray:
     """Computes temporal signal from positive frequency indexes fft.
