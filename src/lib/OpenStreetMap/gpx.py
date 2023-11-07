@@ -1,10 +1,10 @@
-import logging
 import gpxpy
 import gpxpy.gpx
-import csv
 from pathlib import Path
 import folium
 import webbrowser
+
+from src.lib import colors
 
 
 class WAYPOINT_PROPERTIES:
@@ -51,8 +51,6 @@ def getWaypointProperty(waypoint: gpxpy.gpx.GPXWaypoint, property: WAYPOINT_PROP
     for idx in waypoint.extensions:
         if property in idx.tag:
             waypointIcon = idx.text
-        else:
-            logging.warning(f"No {property} found on waypoint")
     return waypointIcon
 
 
@@ -70,33 +68,24 @@ def replaceWaypointProperty(waypoint: gpxpy.gpx.GPXWaypoint, property: WAYPOINT_
     for idx in waypoint.extensions:
         if property in idx.tag:
             idx.text = propertyText
-        else:
-            logging.warning(f"No color found on waypoint")
     return waypoint
 
 
 def visualizeGpx(gpx):
     m = folium.Map(location=[0, 0], zoom_start=10)
     for waypoint in gpx.waypoints:
-        # Get the waypoint name, symbol, and color
-        name = waypoint.name if waypoint.name else "Waypoint"
-        symbol = waypoint.symbol
-        color = getWaypointProperty(waypoint, 'color')
         lastWaypointLocation = [waypoint.latitude, waypoint.longitude]
-        # Create a marker with the specified icon and color
-        # icon = folium.Icon(icon_color=color, color=color)
-        # folium.Marker(
-        #     location=[waypoint.latitude, waypoint.longitude],
-        #     icon=icon,
-        #     popup=name,
-        # ).add_to(m)
+        name = waypoint.name if waypoint.name else "Waypoint"
+        color = getWaypointProperty(waypoint, 'color')
+        desaturatedColor = colors.saturateHEX(color, 0.85)
         folium.CircleMarker(
             [waypoint.latitude, waypoint.longitude],
             radius=6,
-            color=color,
+            color=desaturatedColor,
             fill_color=color,
             fill=True,
-            fill_opacity=1
+            fill_opacity=1,
+            popup=name
             ).add_to(m)
     m.location = lastWaypointLocation
     m.save("waypoints_map.html")

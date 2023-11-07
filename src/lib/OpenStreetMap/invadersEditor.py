@@ -5,7 +5,7 @@ import csv
 import requests
 import gpxpy
 import gpxpy.gpx
-import gpx as gpxLib
+import src.lib.OpenStreetMap.gpx as gpxLib
 from pathlib import Path
 from bs4 import BeautifulSoup
 
@@ -213,7 +213,6 @@ def getInvaderSpotterStateInfos(cityDict: dict):
                 )
             soup = BeautifulSoup(r.text, "html.parser")
             elements = soup.find_all("tr", {"class": "haut"})
-            siFound = False
             if elements != []:
                 for element in elements:
                     content = element.contents[1]
@@ -224,8 +223,7 @@ def getInvaderSpotterStateInfos(cityDict: dict):
                         state = state.split(' !')[0]
                     if 'Instagram' in state:
                         state = state.split('Instagram')[0]
-                    siFound = True
-                    print(name + " : " + state)
+                    logging.info(name + " : " + state)
                     stateDict[name] = state
                 page += 1
             else:
@@ -278,17 +276,23 @@ def getInvaderSpotterNews(month: int, year: int):
     return stateDict
 
 
-def updateInvadersDictFromStateDict(invadersDict: dict, stateDict):
+def updateInvadersDictFromStateDict(invadersDict: dict, stateDict: dict, showFlashed: bool = True):
     for city in invadersDict.keys():
         for number in invadersDict[city].keys():
             waypoint = invadersDict[city][number]
             waypointColor = gpxLib.getWaypointProperty(waypoint=waypoint, property='color')
             state = getInvaderStateFromColor(waypointColor)
-            if state != "flashed":
+            if showFlashed is True:
+                if state != "flashed":
+                    invaderName = city + '_' + number
+                    if invaderName in stateDict.keys():
+                        waypoint = gpxLib.replaceWaypointProperty(waypoint=waypoint, property='color', propertyText=COLOR_DICT[stateDict[invaderName]])
+                    else:
+                        waypoint = gpxLib.replaceWaypointProperty(waypoint=waypoint, property='color', propertyText=COLOR_DICT['OK'])
+            else:
                 invaderName = city + '_' + number
                 if invaderName in stateDict.keys():
                     waypoint = gpxLib.replaceWaypointProperty(waypoint=waypoint, property='color', propertyText=COLOR_DICT[stateDict[invaderName]])
-                    print(invaderName + ' found,' + stateDict[invaderName] + ', color replaced')
                 else:
                     waypoint = gpxLib.replaceWaypointProperty(waypoint=waypoint, property='color', propertyText=COLOR_DICT['OK'])
     return invadersDict
@@ -312,14 +316,3 @@ def getWaypointFormat(gpxPath):
     gpx = gpxpy.parse(gpx_file)
     waypoint = gpx.waypoints[0]
     return waypoint.extensions
-            
-
-if __name__ == '__main__':
-    # gpxPath = Path('X:/Utilisateur/Documents/drouDSP/ressources/cities/Space Invaders.gpx')
-    # invadersDict = getGpxInvaders(gpxPath=gpxPath, cityFilter=None)
-    # stateDict = getInvaderSpotterStateInfos(invadersDict)
-    # invadersDict = updateInvadersDictFromStateDict(invadersDict=invadersDict, stateDict=stateDict)
-    # newGpx = createGpxFromInvadersDict(invadersDict=invadersDict, name='Space Invaders')
-    # gpxLib.saveGpx(newGpx, Path('X:/Utilisateur/Documents/drouDSP/ressources/Space Invaders.gpx'))
-    # gpxLib.visualizeGpx(newGpx)
-    octobeDict = getInvaderSpotterNews(9, 2023)
