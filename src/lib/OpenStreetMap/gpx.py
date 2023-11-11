@@ -1,9 +1,12 @@
+import sys
+import os
 import gpxpy
 import gpxpy.gpx
 from pathlib import Path
 import folium
 import webbrowser
 
+sys.path.append(Path(os.getcwd()).as_posix())
 from src.lib import colors
 
 
@@ -90,13 +93,3 @@ def visualizeGpx(gpx):
     m.location = lastWaypointLocation
     m.save("waypoints_map.html")
     webbrowser.open("waypoints_map.html")
-
-
-if __name__ == '__main__':
-    pass
-
-
-
-
-
-
