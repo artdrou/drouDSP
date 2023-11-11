@@ -20,7 +20,8 @@ COLOR_DICT = {
     "Inconnu": '#000000',
     "neutral": '#eecc22',
     "destroyed": '#d00d0d',
-    "flashed": '#88e030'
+    "flashed": '#88e030',
+    "reactivated": "#ff64fa"
 }
 COLOR_REPLACEMENT_DICT = {
     "neutral": "OK",
@@ -40,9 +41,13 @@ def createInvaderGpx(name: str):
 def findCityNumberingFormat(cityDict: dict) -> int:
     strNumberList = list(cityDict.keys())
     lenList = []
+    maxLen = 0
     for strNumber in strNumberList:
         lenList.append(len(strNumber))
+        if strNumber[0] != 0 and len(strNumber) > maxLen:
+            maxLen = len(strNumber)
     nNumber = max(set(lenList), key = lenList.count)
+    nNumber = max(nNumber, maxLen)
     return nNumber
 
 
@@ -76,6 +81,17 @@ def findCityNameAndNumber(waypoint: gpxpy.gpx.GPXWaypoint):
         cityName = None
         number = None
     return cityName, number
+
+
+def formatInvaderDict(cityDict):
+    formatedCityDict = {}
+    for city in cityDict.keys():
+        formatedCityDict[city] = {}
+        nNumber = findCityNumberingFormat(cityDict[city])
+        for number in cityDict[city].keys():
+            formatedNumber = convertToNumberingFormat(number, nNumber)
+            formatedCityDict[city][formatedNumber] = cityDict[city][number]
+    return formatedCityDict
 
 
 def getGpxInvaders(gpxPath: Path, cityFilter: str = None) -> dict:
@@ -228,7 +244,16 @@ def getInvaderSpotterStateInfos(cityDict: dict):
                 page += 1
             else:
                 i = 1
-    return stateDict
+    formatedStateDict = {}
+    for invader in stateDict.keys():
+        city = invader.split('_')[0]
+        number = invader.split('_')[1]
+        if city not in formatedStateDict.keys():
+            formatedStateDict[city] = {number: stateDict[invader]}
+        else:
+            formatedStateDict[city][number] = stateDict[invader]
+    formatedStateDict = formatInvaderDict(formatedStateDict)
+    return formatedStateDict
 
 
 def findStatusFromNews(newsLine: str, cue: str):
@@ -253,27 +278,29 @@ def getInvaderSpotterNews(month: int, year: int):
         'statut': [],
     }
     url = "https://www.invader-spotter.art/news.php"
-    stateDict = {}
     r = requests.get(
         url="https://www.invader-spotter.art/news.php"
     )
     soup = BeautifulSoup(r.text, "html.parser")
-    if len(str(month)) < 2:
-        month = '0' + str(month)
-    else:
-        month = str(month)
-    dateStr = "mois" + str(year) + month
-    elements = soup.find_all("div", {"id": dateStr})
-    if elements != []:
-        for element in elements:
-            for newsLine in element.contents:
-                if newsLine != '\n':
-                    newsLine = newsLine.text
-                    for cue in newsDict.keys():
-                        statusList = findStatusFromNews(newsLine, cue)
-                        for invader in statusList:
-                            newsDict[cue].append(invader)
-    return stateDict
+    if not isinstance(month, list):
+        month = [month]
+    for monthInstance in month:
+        if len(str(monthInstance)) < 2:
+            monthInstance = '0' + str(monthInstance)
+        else:
+            monthInstance = str(monthInstance)
+        dateStr = "mois" + str(year) + monthInstance
+        elements = soup.find_all("div", {"id": dateStr})
+        if elements != []:
+            for element in elements:
+                for newsLine in element.contents:
+                    if newsLine != '\n':
+                        newsLine = newsLine.text
+                        for cue in newsDict.keys():
+                            statusList = findStatusFromNews(newsLine, cue)
+                            for invader in statusList:
+                                newsDict[cue].append(invader)
+    return newsDict
 
 
 def updateInvadersDictFromStateDict(invadersDict: dict, stateDict: dict, showFlashed: bool = True):
@@ -282,19 +309,19 @@ def updateInvadersDictFromStateDict(invadersDict: dict, stateDict: dict, showFla
             waypoint = invadersDict[city][number]
             waypointColor = gpxLib.getWaypointProperty(waypoint=waypoint, property='color')
             state = getInvaderStateFromColor(waypointColor)
-            if showFlashed is True:
-                if state != "flashed":
-                    invaderName = city + '_' + number
-                    if invaderName in stateDict.keys():
-                        waypoint = gpxLib.replaceWaypointProperty(waypoint=waypoint, property='color', propertyText=COLOR_DICT[stateDict[invaderName]])
+            if (showFlashed is False) or (showFlashed is True and state != "flashed"):
+                if city in stateDict.keys():
+                    if number in stateDict[city].keys():
+                        waypoint = gpxLib.replaceWaypointProperty(
+                            waypoint=waypoint, property='color', propertyText=COLOR_DICT[stateDict[city][number]]
+                        )
                     else:
-                        waypoint = gpxLib.replaceWaypointProperty(waypoint=waypoint, property='color', propertyText=COLOR_DICT['OK'])
-            else:
-                invaderName = city + '_' + number
-                if invaderName in stateDict.keys():
-                    waypoint = gpxLib.replaceWaypointProperty(waypoint=waypoint, property='color', propertyText=COLOR_DICT[stateDict[invaderName]])
-                else:
-                    waypoint = gpxLib.replaceWaypointProperty(waypoint=waypoint, property='color', propertyText=COLOR_DICT['OK'])
+                        waypoint = gpxLib.replaceWaypointProperty(
+                            waypoint=waypoint, property='color', propertyText=COLOR_DICT['OK']
+                        )
+
+
+                
     return invadersDict
 
 
@@ -316,3 +343,55 @@ def getWaypointFormat(gpxPath):
     gpx = gpxpy.parse(gpx_file)
     waypoint = gpx.waypoints[0]
     return waypoint.extensions
+
+
+def highlightReactivated(invadersDict, newsDict):
+    for reactInvader in newsDict['Réactivation']:
+        city = reactInvader.split('_')[0]
+        number = reactInvader.split('_')[1]
+        if city in invadersDict.keys():
+            if number in invadersDict[city].keys():
+                waypoint = invadersDict[city][number]
+                waypoint = gpxLib.replaceWaypointProperty(waypoint, 'color', COLOR_DICT['reactivated'])
+    return invadersDict
+
+
+def updateGpxMapFromWeb(gpxPath, name, cityFilter=None):
+    invadersDict = getGpxInvaders(gpxPath=gpxPath, cityFilter=cityFilter)
+    stateDict = getInvaderSpotterStateInfos(invadersDict)
+    invadersDict = updateInvadersDictFromStateDict(invadersDict, stateDict)
+    gpx = createGpxFromInvadersDict(invadersDict, name)
+    gpxLib.saveGpx(gpx, gpxPath)
+    return gpx
+
+
+def getCityStats(cityDict, cityFilter):
+    stats = {}
+    if cityFilter in cityDict.keys():
+        cityDict = cityDict[cityFilter]
+        nInvaders = len(list(cityDict.keys()))
+        for number in cityDict.keys():
+            color = gpxLib.getWaypointProperty(cityDict[number], 'color')
+            state = getInvaderStateFromColor(color)
+            if state not in stats.keys():
+                stats[state] = {'list' : {cityFilter + '_' + number: cityDict[number]}}
+            else: 
+                stats[state]['list'][cityFilter + '_' + number] = cityDict[number]
+        for state in stats.keys():
+            stats[state]['percent'] = round(
+                100 * (len(list(stats[state]['list'].keys())) / nInvaders), 1
+            )
+            print(f"{state} : {stats[state]['percent']}%  ->  {len(list(stats[state]['list'].keys()))}/{nInvaders} SI")
+    else:
+        logging.error('city ' + cityFilter + ' not found in invaders dict')
+    return stats
+            
+
+if __name__ == '__main__':
+    gpxPath = Path('X:/Utilisateur/Documents/drouDSP/ressources/Space Invaders Drou.gpx')
+    city = 'FTBL'
+    invadersDict = getGpxInvaders(gpxPath=gpxPath, cityFilter=city)
+    # getCityStats(invadersDict, city)
+    ah = getInvaderSpotterNews([10], 2023)
+    gpx = updateGpxMapFromWeb(gpxPath, 'FTBL', 'FTBL')
+    gpxLib.visualizeGpx(gpx)

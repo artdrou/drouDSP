@@ -1,5 +1,7 @@
 import sys
 import os
+import time
+import tempfile
 import gpxpy
 import gpxpy.gpx
 from pathlib import Path
@@ -91,5 +93,8 @@ def visualizeGpx(gpx):
             popup=name
             ).add_to(m)
     m.location = lastWaypointLocation
-    m.save("waypoints_map.html")
-    webbrowser.open("waypoints_map.html")
+    _, filename = tempfile.mkstemp(suffix='.html')
+    m.save(filename)
+    webbrowser.open(filename)
+    time.sleep(5)
+    os.remove(filename)
