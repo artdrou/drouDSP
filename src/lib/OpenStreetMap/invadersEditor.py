@@ -135,15 +135,11 @@ def openInvaderCSV(path: Path) -> dict:
         for row in reader:
             for city in row.keys():
                 number = row[city]
-                if len(number) < 4:
-                    zeroPad = ''
-                    for idx in range(4-len(number)):
-                        zeroPad += '0'
-                    number = zeroPad + number
-                if city in dict.keys():
-                    dict[city].append(number)
-                else:
-                    dict[city] = [number]
+                if number != '':
+                    if city in dict.keys():
+                        dict[city].append(number)
+                    else:
+                        dict[city] = [number]
     return dict
 
 
@@ -319,9 +315,6 @@ def updateInvadersDictFromStateDict(invadersDict: dict, stateDict: dict, showFla
                         waypoint = gpxLib.replaceWaypointProperty(
                             waypoint=waypoint, property='color', propertyText=COLOR_DICT['OK']
                         )
-
-
-                
     return invadersDict
 
 
@@ -385,13 +378,13 @@ def getCityStats(cityDict, cityFilter):
     else:
         logging.error('city ' + cityFilter + ' not found in invaders dict')
     return stats
-            
 
-if __name__ == '__main__':
-    gpxPath = Path('X:/Utilisateur/Documents/drouDSP/ressources/Space Invaders Drou.gpx')
-    city = 'FTBL'
-    invadersDict = getGpxInvaders(gpxPath=gpxPath, cityFilter=city)
-    # getCityStats(invadersDict, city)
-    ah = getInvaderSpotterNews([10], 2023)
-    gpx = updateGpxMapFromWeb(gpxPath, 'FTBL', 'FTBL')
-    gpxLib.visualizeGpx(gpx)
+def updateGpxFromCSV(invadersDict: dict, csvInvaders: dict, name: str):
+    for city in invadersDict.keys():
+        if city in csvInvaders.keys():
+            for number, waypoint in invadersDict[city].items():
+                rawNumber = str(int(number))
+                if rawNumber in csvInvaders[city]:
+                    gpxLib.replaceWaypointProperty(waypoint=waypoint, property='color', propertyText=COLOR_DICT['flashed'])
+    gpx = createGpxFromInvadersDict(invadersDict, name)
+    return gpx
